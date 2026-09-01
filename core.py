@@ -104,12 +104,21 @@ def add_sma(df: pd.DataFrame, lengths: list[int]) -> pd.DataFrame:
 
 
 def rsi(close: pd.Series, length: int = 14) -> pd.Series:
-    """Wilder's RSI, the same smoothing TradingView uses by default."""
+    """Wilder's RSI, the same smoothing TradingView uses by default.
+
+    The first average is the SMA of the first `length` deltas, then each step
+    carries the previous value down with (length-1)/length weight on the new
+    reading. Seeding with the SMA (rather than letting pandas seed the EMA with
+    the first value) is what makes this match TradingView's "Wilder" line.
+    """
     delta = close.diff()
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
-    avg_gain = gain.ewm(alpha=1 / length, adjust=False, min_periods=length).mean()
-    avg_loss = loss.ewm(alpha=1 / length, adjust=False, min_periods=length).mean()
+    avg_gain = gain.rolling(length).mean().copy()
+    avg_loss = loss.rolling(length).mean().copy()
+    for i in range(length + 1, len(close)):
+        avg_gain.iloc[i] = (avg_gain.iloc[i - 1] * (length - 1) + gain.iloc[i]) / length
+        avg_loss.iloc[i] = (avg_loss.iloc[i - 1] * (length - 1) + loss.iloc[i]) / length
     rs = avg_gain / avg_loss
     return 100 - 100 / (1 + rs)
 

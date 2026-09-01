@@ -92,8 +92,12 @@ def _reading(p: Pair, three_month: float, above_ma: bool, position: float) -> tu
 
 
 @st.cache_data(ttl=900, show_spinner=False)
-def screen(period: str = "2y") -> pd.DataFrame:
-    """Changes and readings for every preset pair in one table."""
+def screen(period: str = "5y") -> pd.DataFrame:
+    """Changes and readings for every preset pair in one table.
+
+    Levels come from three years of daily data (the same window the chart uses),
+    so the Overview Level column and the chart caption agree.
+    """
     rows = []
     for theme, p in all_pairs():
         try:
@@ -105,11 +109,12 @@ def screen(period: str = "2y") -> pd.DataFrame:
         if len(r) < 60:
             continue
 
+        hist = r.tail(REFERENCE_DAYS)
         window = r.tail(252)
         span = float(window.max() - window.min())
         position = float((window.iloc[-1] - window.min()) / span * 100) if span else float("nan")
         three_month = _pct(r, 63)
-        pct_of_history = float((r < r.iloc[-1]).mean() * 100)
+        pct_of_history = float((hist < hist.iloc[-1]).mean() * 100)
         above_ma = bool(r.iloc[-1] > r.rolling(50).mean().iloc[-1])
         state, reading = _reading(p, three_month, above_ma, position)
 
@@ -230,9 +235,11 @@ with tab_chart:
     )
     if ref:
         pct = ref["percentile"]
-        if pct >= 100:
+        # Same near-extreme thresholds the Overview uses to flag "at its yearly
+        # high/low", so the two readings agree on wording and cut.
+        if pct >= digest.NEAR_HIGH:
             standing = "<b>High</b>, at a 3y high"
-        elif pct <= 0:
+        elif pct <= digest.NEAR_LOW:
             standing = "<b>Low</b>, at a 3y low"
         else:
             # Clamp the rounding: 99.9% must not print as 100%, which would
@@ -309,7 +316,7 @@ with tab_chart:
 with tab_screen:
     st.subheader("Every preset pair")
     st.caption(
-        "Two years of daily data. State comes from the three month change together "
+        "Three years of daily data. State comes from the three month change together "
         "with the 50 day average. The 52w position shows where the ratio sits in its "
         "yearly range, where 0% is the low and 100% the high."
     )

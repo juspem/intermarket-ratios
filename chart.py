@@ -43,7 +43,7 @@ def build_figure(
     title: str,
     interval: str,
     sma_lengths: list[int],
-    log_scale: bool = True,
+    log_scale: bool = False,
     show_rsi: bool = True,
     show_macd: bool = False,
     rsi_length: int = 14,
@@ -111,7 +111,7 @@ def build_figure(
 
     if show_macd:
         m = macd(df["Close"])
-        colors = [UP if v >= 0 else DOWN for v in m["Hist"]]
+        colors = [UP if pd.notna(v) and v >= 0 else DOWN for v in m["Hist"]]
         fig.add_trace(
             go.Bar(x=df.index, y=m["Hist"], name="Hist", marker_color=colors, opacity=0.5),
             row=row, col=1,
