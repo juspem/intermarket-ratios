@@ -1,64 +1,66 @@
 # Chart-Ratios
 
-Streamlit-työkalu kahden instrumentin suhdeluvun tarkasteluun kynttilägraafina, esimerkiksi HYG/IEF. Suhdeparit kertovat markkinan sisäisestä liikkeestä enemmän kuin yksittäisen instrumentin kurssi.
+A Streamlit tool for looking at the ratio between two instruments as a candle chart, for example HYG/IEF. Ratio pairs say more about what is going on inside the market than any single price does.
 
-## Käyttö
+## Use
 
-Valitse sivupalkista osoittaja ja nimittäjä, historian pituus ja kynttilän aikaväli. Voit joko kirjoittaa tickerit itse tai valita valmiin parin.
+Pick a numerator and a denominator in the sidebar, along with the history length and the candle size. You can type tickers yourself or choose one of the presets.
 
-Yleiskatsaus-välilehti laskee kaikkien valmiiden parien 1 kk, 3 kk ja 12 kk muutokset sekä sijainnin 52 viikon vaihteluvälillä. Jokaiselle parille tulee lisäksi tila (nouseva, laskeva, sivuttain) ja lause siitä mitä suunta juuri sille parille tarkoittaa. Taulukon yläpuolella on kappale kokonaiskuvasta, erikseen nostetut poikkeavat liikkeet ja huomautus jos teemat kertovat eri tarinaa.
+The Overview tab works out the 1M, 3M and 12M change for every preset pair plus where each one sits in its 52 week range. Each pair gets a state (rising, falling, flat) and a line on what that direction means for that particular pair. Above the table there is a paragraph on the overall picture, a separate list of unusual moves, and a note if the themes are telling different stories.
 
-## Kuvaaja
+## The chart
 
-Rulla zoomaa, veto panoroi, tuplaklikkaus palauttaa näkymän. Ristikkokursori seuraa hiirtä paneelien läpi ja näyttää arvot yhdessä laatikossa.
+The wheel zooms, dragging pans, double click resets. A crosshair follows the cursor through every panel and shows the values in one box. Drag the bottom edge of the chart to make it taller.
 
-RSI ja MACD saa omiin paneeleihinsa sivupalkista. RSI käyttää Wilderin silotusta eli samaa laskutapaa kuin TradingView'n oletus.
+RSI and MACD get their own panels from the sidebar. RSI uses Wilder's smoothing, the same as TradingView's default.
 
-Piirtotyökalut ovat oikean yläkulman työkalupalkissa. Piirretyt viivat katoavat kun sivu piirretään uudelleen, eli aina kun asetuksia vaihdetaan.
+The drawing tools live in the toolbar at the top right. Anything you draw disappears when the page reruns, which happens every time you change a setting.
 
-## Aikavälit
+## Timeframes
 
-1 min - kvartaali. Yahoo rajoittaa intraday-historiaa: 1 min noin 7 päivää, 5-30 min noin 60 päivää, 1 h noin 730 päivää. Historiavalikko rajautuu automaattisesti valitun kynttiläkoon mukaan.
+1 min through quarterly. Yahoo limits intraday history: roughly 7 days at 1 min, 60 days at 5 to 30 min, and 730 days at 1 hour. The history dropdown narrows itself to whatever the chosen candle size allows.
 
-2 h ja 4 h lasketaan tuntidatasta, viikko ja sitä pidemmät päivädatasta. Aikavälin vaihto ei siis aina vaadi uutta hakua.
+2 hour and 4 hour candles are built from hourly data, weekly and longer from daily. So changing the timeframe often costs no new download.
 
-## Parin oma mittatikku
+## Reading the level
 
-Suhdeparin absoluuttinen luku ei kerro mitään, koska se riippuu vain ETF:ien osakekursseista. HYG/IEF on noin 0,82 pelkästään siksi että HYG maksaa vähemmän kuin IEF.
+The absolute number on a ratio chart means nothing on its own. HYG/IEF sits around 0.82 purely because HYG costs less than IEF. Split the denominator two for one and the ratio doubles without anything happening in the market.
 
-Siksi kuvaajan yläpuolella näytetään parin oma vaihteluväli kolmen vuoden päivädatasta: mikä luku on matala (alin kymmenys), mikä mediaani ja mikä korkea (ylin kymmenys), sekä missä kohtaa suhde nyt on. Yleiskatsauksessa sama tieto on Taso-sarakkeena.
+So the chart shows the pair's own range instead, taken from three years of daily data: what counts as low (bottom tenth), what the median is, what counts as high (top tenth), and where the ratio sits today. The Overview tab carries the same thing as a Level column.
 
-Vakiintuneita raja-arvoja ei merkitä, koska niitä ei suurimmalle osalle pareista ole olemassa. Ainoa poikkeus on GLD/SLV: kulta-hopea-suhdetta yli 80 pidetään korkeana ja alle 50 matalana. Näytöllä oleva luku on noin kymmenesosa siitä, koska GLD:ssä on noin 0,09 unssia kultaa ja SLV:ssä noin 0,9 unssia hopeaa osaketta kohden.
+No fixed thresholds are drawn, because for almost every pair none exist. The one exception is GLD/SLV, where a gold to silver ratio above 80 is widely treated as high and below 50 as low. The number on the chart is about a tenth of that, since GLD holds roughly 0.09 ounces of gold per share and SLV roughly 0.9 ounces of silver.
 
-Kuvaajan alta löytyy myös Mistä pari koostuu, joka kertoo mitä kumpikin ETF sisältää. Kuvaukset ovat tickers.py-tiedostossa.
+Above every chart you get what each leg holds, what the pair reads, anything odd about that particular pair, a paragraph on why the theme is worth watching at all, and where the ratio currently stands against its own three year history. ETF descriptions live in tickers.py, theme background and pair notes in presets.py.
 
-## Suhdekynttilöiden laskenta
+Below the chart sit the headline numbers and the raw data.
 
-Open ja Close ovat eksakteja: A.Open / B.Open ja A.Close / B.Close.
+## How ratio candles are built
 
-High ja Low ovat teoreettisia ääriarvoja: A.High / B.Low ja A.Low / B.High. Nämä ovat hieman todellista leveämpiä, koska datasta ei näe osuivatko A:n huippu ja B:n pohja samaan hetkeen.
+Open and Close are exact: A.Open / B.Open and A.Close / B.Close.
 
-## Valmiit parit
+High and Low are the widest the ratio could have been inside the bar: A.High / B.Low and A.Low / B.High. They come out slightly wider than reality, because the data does not say whether A's high and B's low happened at the same moment.
 
-presets.py sisältää noin 40 vakiintunutta suhdeparia kahdeksassa teemassa: luottoriski, riskinotto osakkeissa, sektorijohtajuus, tyyli, defensiivinen varoitus, korot ja inflaatio, raaka-aineet ja maantiede.
+## Preset pairs
 
-Jokainen pari on Pair-tietue: osoittaja, nimittäjä, lyhyt otsikko valikkoon sekä kuvaus siitä mitä nousu ja lasku tarkoittavat. Samasta tekstistä syntyy kuvaajan selite ja yleiskatsauksen tulkinta. Omat parit lisätään suoraan presets.py-tiedostoon.
+presets.py holds around 40 well established pairs across eight themes: credit risk, risk appetite in equities, sector leadership, style, defensive warning, rates and inflation, commodities, and regions.
 
-## Rakenne
+Each one is a Pair record: numerator, denominator, a short topic for the dropdown, and a line each on what rising and falling mean. That same text feeds the chart caption and the overview reading. Ten pairs also carry a note about something that would otherwise mislead you, such as HYG and IEF having very different duration. Themes carry a longer background paragraph in THEMES. Add your own straight into presets.py.
 
-core.py: datan haku, suhdekynttilöiden laskenta, indikaattorit
+## Layout
 
-chart.py: Plotly-kuvaaja, ristikkokursori, piirtotyökalut, indikaattoripaneelit
+core.py: data fetching, ratio candles, indicators, percentile ranges
 
-digest.py: yhteenveto yleiskatsauksesta
+chart.py: the Plotly figure, crosshair, drawing tools, indicator panels
 
-tickers.py: mitä kukin ETF sisältää
+digest.py: the written summary of the overview
 
-app.py: Streamlit-käyttöliittymä
+presets.py: preset pairs by theme
 
-presets.py: valmiit suhdeparit teemoittain
+tickers.py: what each ETF holds
 
-## Asennus
+app.py: the Streamlit interface
+
+## Install
 
 ```
 python -m venv .venv
@@ -67,10 +69,10 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Kehityskohteita
+## Todo
 
-- piirrettyjen viivojen säilytys asetusten vaihdon yli
-- omien parien tallennus tiedostoon
-- yhteenvedon kieli kielimallilla, jos oma API-avain annetaan
-- datan välimuisti levylle
-- useampi suhdepari samassa näkymässä
+- keep drawings alive across reruns
+- save custom pairs to a file
+- cache data to disk
+- more than one ratio in the same view
+- let a language model write the summary if an API key is supplied

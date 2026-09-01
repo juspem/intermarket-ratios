@@ -1,4 +1,4 @@
-"""Kuvaajan rakentaminen. Erillään käyttöliittymästä, jotta on testattavissa."""
+"""Chart building, kept apart from the UI so it can be tested on its own."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from plotly.subplots import make_subplots
 
 from core import INTRADAY, macd, rsi
 
-# Plotlyn modebariin lisättävät piirtotyökalut.
+# Drawing tools added to the Plotly toolbar.
 DRAW_TOOLS = [
     "drawline",
     "drawopenpath",
@@ -17,8 +17,8 @@ DRAW_TOOLS = [
 ]
 
 PLOTLY_CONFIG = {
-    "scrollZoom": True,          # rullalla zoomaus kuten TradingView'ssä
-    "responsive": True,          # mukautuu laatikon kokoon
+    "scrollZoom": True,          # wheel zoom, the way TradingView does it
+    "responsive": True,          # follow the size of its container
     "displaylogo": False,
     "modeBarButtonsToAdd": DRAW_TOOLS,
     "doubleClick": "reset",
@@ -30,10 +30,10 @@ DOWN = "#ef5350"
 
 
 def _rangebreaks(interval: str) -> list[dict]:
-    """Poista tyhjät kohdat: viikonloput ja pörssin kiinnioloajat."""
+    """Drop the empty gaps: weekends and hours when the market is shut."""
     breaks: list[dict] = [dict(bounds=["sat", "mon"])]
     if interval in INTRADAY:
-        # Yhdysvaltain pörssin kaupankäyntiaika 09:30–16:00 paikallista aikaa.
+        # US market hours, 09:30 to 16:00 local time.
         breaks.append(dict(bounds=[16, 9.5], pattern="hour"))
     return breaks
 
@@ -49,7 +49,7 @@ def build_figure(
     rsi_length: int = 14,
     height: int = 720,
 ) -> go.Figure:
-    """Kynttilägraafi ja valinnaiset indikaattorit omissa paneeleissaan."""
+    """Candles, with optional indicators in panels of their own."""
     panels = 1 + int(show_rsi) + int(show_macd)
     heights = {1: [1.0], 2: [0.74, 0.26], 3: [0.62, 0.19, 0.19]}[panels]
 
@@ -130,7 +130,7 @@ def build_figure(
         height=height,
         margin=dict(l=8, r=8, t=28, b=8),
         template="plotly_dark",
-        dragmode="pan",              # hiiren veto panoroi, ei zoomaa laatikkoon
+        dragmode="pan",              # dragging pans instead of box zooming
         hovermode="x unified",
         hoverdistance=1,
         legend=dict(orientation="h", y=1.02, yanchor="bottom", x=0),
@@ -138,7 +138,7 @@ def build_figure(
         newshape=dict(line=dict(color="#ffca28", width=1.5)),
     )
 
-    # Ristikkokursori: pystyviiva läpi kaikkien paneelien, vaakaviiva hinnalle.
+    # Crosshair: a vertical line through every panel and a horizontal one on price.
     fig.update_xaxes(
         showspikes=True,
         spikemode="across",
@@ -172,13 +172,13 @@ def build_figure(
 
 
 def resizable_html(fig: go.Figure, height: int = 760, auto_y: bool = True) -> str:
-    """Kääri kuvaaja laatikkoon, jonka korkeutta voi raahata alareunasta.
+    """Wrap the chart in a box you can drag taller from its bottom edge.
 
-    Streamlit renderöi tämän iframeen. ResizeObserver ilmoittaa uuden korkeuden
-    sekä Plotlylle että Streamlitille, jotta iframe kasvaa laatikon mukana.
+    Streamlit renders this inside an iframe. The ResizeObserver tells both
+    Plotly and Streamlit about the new height so the iframe grows with the box.
 
-    auto_y sovittaa hinta-akselin näkyviin kynttilöihin aina kun x-akselia
-    liikutetaan, kuten TradingView'ssä.
+    auto_y refits the price axis to whatever candles are visible whenever the
+    x axis moves, the way TradingView behaves.
     """
     fig = go.Figure(fig)
     fig.update_layout(height=None, autosize=True)
@@ -208,7 +208,7 @@ def resizable_html(fig: go.Figure, height: int = 760, auto_y: bool = True) -> st
     );
   }}
 
-  // Sovita hinta-akseli niihin kynttilöihin jotka ovat näkyvissä.
+  // Refit the price axis to the candles currently in view.
   function fitY() {{
     if (busy || !window.Plotly) return;
     const c = gd.data.find(t => t.type === "candlestick");
@@ -245,7 +245,7 @@ def resizable_html(fig: go.Figure, height: int = 760, auto_y: bool = True) -> st
     sync();
     if (autoY && gd.on) {{
       gd.on("plotly_relayout", function (ev) {{
-        // Vain x-akselin muutos laukaisee sovituksen, jotta oma y-säätö säilyy.
+        // Only an x axis change triggers a refit, so a manual y zoom sticks.
         if (ev["xaxis.range[0]"] !== undefined || ev["xaxis.autorange"]) fitY();
       }});
       fitY();

@@ -1,6 +1,6 @@
-"""Suhdelukugraafi kahdelle instrumentille, esim. HYG/IEF.
+"""Ratio charts for two instruments, for example HYG/IEF.
 
-Käynnistys:  streamlit run app.py
+Run with:  streamlit run app.py
 """
 
 from __future__ import annotations
@@ -15,36 +15,38 @@ from core import (
     PERIODS_BY_INTERVAL,
     TIMEFRAMES,
     add_sma,
+    level,
     load_prices,
+    percentile_range,
     ratio_ohlc,
     resample_ohlc,
     summary,
-    taso,
-    vaihteluvali,
 )
-from presets import PRESETS, Pair, all_pairs, flat
-from tickers import kuvaus
+from presets import PRESETS, THEMES, Pair, all_pairs, flat
+from tickers import describe
 
-st.set_page_config(page_title="Suhdelukugraafi", layout="wide")
+st.set_page_config(page_title="Ratio charts", layout="wide")
 
 FLAT = flat()
-OMA = "— oma valinta —"
+CUSTOM = "— custom —"
 
-# Oletusvalinnat käynnistyksessä.
-VAKIO_KYNTTILA = "Päivä"   # mikä tahansa avain core.TIMEFRAMES-sanakirjasta
-VAKIO_HISTORIA = "1y"      # käytetään jos aikaväli sallii, muuten pisin mahdollinen
-VAKIO_PARI = PRESETS["Luottoriski"][0]
+# What loads on startup.
+DEFAULT_TIMEFRAME = "Daily"   # any key from core.TIMEFRAMES
+DEFAULT_PERIOD = "1y"         # used where the timeframe allows it, longest available otherwise
+DEFAULT_PAIR = PRESETS["Credit risk"][0]
+
+REFERENCE_DAYS = 756          # about three years of trading days
 
 for key, value in {
-    "cat": "Luottoriski",
-    "pair": VAKIO_PARI.label,
-    "ticker_a": VAKIO_PARI.a,
-    "ticker_b": VAKIO_PARI.b,
+    "theme": "Credit risk",
+    "pair": DEFAULT_PAIR.label,
+    "ticker_a": DEFAULT_PAIR.a,
+    "ticker_b": DEFAULT_PAIR.b,
 }.items():
     st.session_state.setdefault(key, value)
 
 
-# --- Datan haku ---------------------------------------------------------
+# --- Data ---------------------------------------------------------------
 
 @st.cache_data(ttl=900, show_spinner=False)
 def cached_prices(ticker: str, period: str, interval: str = "1d") -> pd.DataFrame:
@@ -57,45 +59,42 @@ def _pct(series: pd.Series, bars: int) -> float:
     return float((series.iloc[-1] / series.iloc[-1 - bars] - 1) * 100)
 
 
-def _tulkinta(p: Pair, kolme_kk: float, yli_ka: bool, sijainti: float) -> tuple[str, str]:
-    """Luokittele suunta ja muodosta lause siitä mitä se parille tarkoittaa."""
-    if kolme_kk > 2 and yli_ka:
-        tila, teksti = "Nouseva", p.nousu
-    elif kolme_kk < -2 and not yli_ka:
-        tila, teksti = "Laskeva", p.lasku
-    else:
-        tila, teksti = "Sivuttain", "ei selvää suuntaa"
-
-    teksti = teksti[0].upper() + teksti[1:]
-    if sijainti >= 90:
-        teksti += ". Lähellä vuoden huippua"
-    elif sijainti <= 10:
-        teksti += ". Lähellä vuoden pohjaa"
-    return tila, teksti
-
-
-VERTAILU_PAIVIA = 756  # noin kolme vuotta pörssipäiviä
-
-
 @st.cache_data(ttl=900, show_spinner=False)
-def vertailuluvut(a: str, b: str) -> dict[str, float] | None:
-    """Parin oma vaihteluväli kolmen vuoden päivädatasta."""
+def reference_range(a: str, b: str) -> dict[str, float] | None:
+    """The pair's own range, measured over three years of daily data."""
     try:
         ca = cached_prices(a, "5y")["Close"]
         cb = cached_prices(b, "5y")["Close"]
     except Exception:
         return None
-    r = (ca / cb).dropna().tail(VERTAILU_PAIVIA)
+    r = (ca / cb).dropna().tail(REFERENCE_DAYS)
     if len(r) < 200:
         return None
-    return vaihteluvali(r)
+    return percentile_range(r)
+
+
+def _reading(p: Pair, three_month: float, above_ma: bool, position: float) -> tuple[str, str]:
+    """Classify the direction and say what it means for this pair."""
+    if three_month > 2 and above_ma:
+        state, text = "Rising", p.rising
+    elif three_month < -2 and not above_ma:
+        state, text = "Falling", p.falling
+    else:
+        state, text = "Flat", "no clear direction"
+
+    text = text[0].upper() + text[1:]
+    if position >= 90:
+        text += ". Close to its yearly high"
+    elif position <= 10:
+        text += ". Close to its yearly low"
+    return state, text
 
 
 @st.cache_data(ttl=900, show_spinner=False)
 def screen(period: str = "2y") -> pd.DataFrame:
-    """Laske kaikkien valmiiden parien muutokset ja tulkinta yhteen taulukkoon."""
+    """Changes and readings for every preset pair in one table."""
     rows = []
-    for cat, p in all_pairs():
+    for theme, p in all_pairs():
         try:
             ca = cached_prices(p.a, period)["Close"]
             cb = cached_prices(p.b, period)["Close"]
@@ -107,35 +106,35 @@ def screen(period: str = "2y") -> pd.DataFrame:
 
         window = r.tail(252)
         span = float(window.max() - window.min())
-        sijainti = float((window.iloc[-1] - window.min()) / span * 100) if span else float("nan")
-        kolme_kk = _pct(r, 63)
-        pros = float((r < r.iloc[-1]).mean() * 100)
-        yli_ka = bool(r.iloc[-1] > r.rolling(50).mean().iloc[-1])
-        tila, tulkinta = _tulkinta(p, kolme_kk, yli_ka, sijainti)
+        position = float((window.iloc[-1] - window.min()) / span * 100) if span else float("nan")
+        three_month = _pct(r, 63)
+        pct_of_history = float((r < r.iloc[-1]).mean() * 100)
+        above_ma = bool(r.iloc[-1] > r.rolling(50).mean().iloc[-1])
+        state, reading = _reading(p, three_month, above_ma, position)
 
         rows.append(
             {
-                "Teema": cat,
-                "Pari": p.nimi,
-                "Aihe": p.lyhyt,
-                "Taso": taso(pros),
-                "Tila": tila,
-                "Tulkinta": tulkinta,
-                "1 kk %": _pct(r, 21),
-                "3 kk %": kolme_kk,
-                "12 kk %": _pct(r, 252),
-                "Sijainti 52vk %": sijainti,
+                "Theme": theme,
+                "Pair": p.name,
+                "Topic": p.topic,
+                "Level": level(pct_of_history),
+                "State": state,
+                "Reading": reading,
+                "1M %": _pct(r, 21),
+                "3M %": three_month,
+                "12M %": _pct(r, 252),
+                "52w position %": position,
             }
         )
     return pd.DataFrame(rows)
 
 
-# --- Sivupalkki ---------------------------------------------------------
+# --- Sidebar ------------------------------------------------------------
 
-def on_cat_change() -> None:
-    cat = st.session_state.cat
-    if cat in PRESETS:
-        p = PRESETS[cat][0]
+def on_theme_change() -> None:
+    theme = st.session_state.theme
+    if theme in PRESETS:
+        p = PRESETS[theme][0]
         st.session_state.pair = p.label
         st.session_state.ticker_a = p.a
         st.session_state.ticker_b = p.b
@@ -149,115 +148,112 @@ def on_pair_change() -> None:
 
 
 with st.sidebar:
-    st.header("Pari")
-    st.selectbox("Teema", [OMA, *PRESETS], key="cat", on_change=on_cat_change)
+    st.header("Pair")
+    st.selectbox("Theme", [CUSTOM, *PRESETS], key="theme", on_change=on_theme_change)
 
-    valittu: Pair | None = None
-    if st.session_state.cat in PRESETS:
-        options = [p.label for p in PRESETS[st.session_state.cat]]
+    selected: Pair | None = None
+    selected_theme = ""
+    if st.session_state.theme in PRESETS:
+        options = [p.label for p in PRESETS[st.session_state.theme]]
         if st.session_state.pair not in options:
             st.session_state.pair = options[0]
-        st.selectbox("Valmis pari", options, key="pair", on_change=on_pair_change)
-        valittu = FLAT[st.session_state.pair]
+        st.selectbox("Preset pair", options, key="pair", on_change=on_pair_change)
+        selected = FLAT[st.session_state.pair]
+        selected_theme = st.session_state.theme
 
     col_a, col_b = st.columns(2)
-    col_a.text_input("Osoittaja", key="ticker_a")
-    col_b.text_input("Nimittäjä", key="ticker_b")
+    col_a.text_input("Numerator", key="ticker_a")
+    col_b.text_input("Denominator", key="ticker_b")
 
-    st.header("Aikaväli")
+    st.header("Timeframe")
     tf_names = list(TIMEFRAMES)
-    tf_name = st.selectbox("Kynttilä", tf_names, index=tf_names.index(VAKIO_KYNTTILA))
+    tf_name = st.selectbox("Candle", tf_names, index=tf_names.index(DEFAULT_TIMEFRAME))
     interval, rule = TIMEFRAMES[tf_name]
     periods = PERIODS_BY_INTERVAL[interval]
     period = st.selectbox(
-        "Historia",
+        "History",
         periods,
-        index=periods.index(VAKIO_HISTORIA) if VAKIO_HISTORIA in periods else len(periods) - 1,
+        index=periods.index(DEFAULT_PERIOD) if DEFAULT_PERIOD in periods else len(periods) - 1,
     )
 
-    st.header("Indikaattorit")
-    sma_input = st.text_input("Liukuvat keskiarvot (pilkulla)", "20, 50")
+    st.header("Indicators")
+    sma_input = st.text_input("Moving averages (comma separated)", "20, 50")
     show_rsi = st.checkbox("RSI", value=False)
-    rsi_length = st.number_input("RSI pituus", 2, 100, 14, disabled=not show_rsi)
+    rsi_length = st.number_input("RSI length", 2, 100, 14, disabled=not show_rsi)
     show_macd = st.checkbox("MACD", value=False)
-    log_scale = st.checkbox("Logaritminen asteikko", value=False)
-    height = st.slider("Aloituskorkeus", 400, 1200, 760, step=20)
-    resizable = st.checkbox("Raahattava korkeus", value=True)
+    log_scale = st.checkbox("Log scale", value=False)
+    height = st.slider("Starting height", 400, 1200, 760, step=20)
+    resizable = st.checkbox("Draggable height", value=True)
 
 ticker_a = st.session_state.ticker_a.strip().upper()
 ticker_b = st.session_state.ticker_b.strip().upper()
 sma_lengths = [int(p.strip()) for p in sma_input.split(",") if p.strip().isdigit()]
 
-# Selite näytetään vain jos tickerit vastaavat yhä valittua paria.
-if valittu and (ticker_a, ticker_b) != (valittu.a, valittu.b):
-    valittu = None
+# Only keep the preset caption while the tickers still match it.
+if selected and (ticker_a, ticker_b) != (selected.a, selected.b):
+    selected = None
+    selected_theme = ""
 
 
-# --- Välilehdet ---------------------------------------------------------
+# --- Tabs ---------------------------------------------------------------
 
-tab_chart, tab_screen = st.tabs(["Graafi", "Yleiskatsaus"])
+tab_chart, tab_screen = st.tabs(["Chart", "Overview"])
 
 with tab_chart:
-    head, metrics = st.columns([2, 3])
-    head.subheader(f"{ticker_a} / {ticker_b}")
-
     try:
-        with st.spinner("Haetaan dataa…"):
+        with st.spinner("Fetching data…"):
             a = cached_prices(ticker_a, period, interval)
             b = cached_prices(ticker_b, period, interval)
         ratio = add_sma(resample_ohlc(ratio_ohlc(a, b), rule), sma_lengths)
-    except Exception as exc:  # noqa: BLE001 – näytetään virhe käyttäjälle
-        st.error(f"Datan haku epäonnistui: {exc}")
+    except Exception as exc:  # noqa: BLE001 – show the failure to the user
+        st.error(f"Could not load data: {exc}")
         st.stop()
 
     if len(ratio) < 2:
-        st.warning("Liian vähän dataa piirrettäväksi. Kokeile pidempää historiaa.")
+        st.warning("Not enough data to draw. Try a longer history.")
         st.stop()
 
-    s = summary(ratio)
-    c1, c2, c3, c4 = metrics.columns(4)
-    c1.metric("Viimeisin", f"{s['viimeisin']:.4f}")
-    c2.metric("Muutos jaksolla", f"{s['muutos_%']:+.1f} %")
-    c3.metric("Matalin", f"{s['min']:.4f}")
-    c4.metric("Korkein", f"{s['max']:.4f}")
+    # --- above the chart: what the legs are, what the pair reads, where it stands ---
 
-    if valittu:
+    st.subheader(f"{ticker_a} / {ticker_b}")
+
+    about_a, about_b = describe(ticker_a), describe(ticker_b)
+    if about_a:
+        st.markdown(f"**{ticker_a}** (numerator). {about_a}")
+    if about_b:
+        st.markdown(f"**{ticker_b}** (denominator). {about_b}")
+
+    if selected:
         st.markdown(
-            f"**{valittu.lyhyt}.** Nouseva käyrä: {valittu.nousu}. "
-            f"Laskeva käyrä: {valittu.lasku}."
+            f"**{selected.topic}.** The ratio rises when {ticker_a} outperforms "
+            f"{ticker_b}, which means {selected.rising}. A falling ratio means "
+            f"{selected.falling}."
         )
+        if selected.note:
+            st.markdown(f"**Worth knowing.** {selected.note}")
+    if selected_theme in THEMES:
+        st.markdown(f"**Why {selected_theme.lower()} matters.** {THEMES[selected_theme]}")
 
-    v = vertailuluvut(ticker_a, ticker_b)
-    if v:
-        nyt_taso = taso(v["persentiili"])
-        merkitys = {
-            "Korkea": valittu.nousu if valittu else "suhde on historiansa yläpäässä",
-            "Matala": valittu.lasku if valittu else "suhde on historiansa alapäässä",
-            "Normaali": "taso on tavanomainen",
-        }[nyt_taso]
+    ref = reference_range(ticker_a, ticker_b)
+    if ref:
+        current = level(ref["percentile"])
+        meaning = {
+            "High": selected.rising if selected else "the ratio is near the top of its range",
+            "Low": selected.falling if selected else "the ratio is near the bottom of its range",
+            "Normal": "this is an ordinary level",
+        }[current]
         st.info(
-            f"**{nyt_taso}: {v['nyt']:.4f}** on korkeampi kuin "
-            f"{v['persentiili']:.0f} % kolmen vuoden havainnoista. "
-            f"Matala alle {v['matala']:.4f}, mediaani {v['mediaani']:.4f}, "
-            f"korkea yli {v['korkea']:.4f}. "
-            f"{merkitys[0].upper() + merkitys[1:]}."
+            f"**{current}: {ref['now']:.4f}** sits above "
+            f"{ref['percentile']:.0f}% of the last three years. "
+            f"Low is under {ref['low']:.4f}, the median is {ref['median']:.4f} "
+            f"and high is over {ref['high']:.4f}. "
+            f"{meaning[0].upper() + meaning[1:]}."
         )
 
-    if valittu and valittu.vakiintuneet:
-        st.warning(valittu.vakiintuneet)
+    if selected and selected.convention:
+        st.warning(selected.convention)
 
-    kuvaus_a, kuvaus_b = kuvaus(ticker_a), kuvaus(ticker_b)
-    if kuvaus_a or kuvaus_b:
-        with st.expander("Mistä pari koostuu"):
-            if kuvaus_a:
-                st.markdown(f"**{ticker_a}** (osoittaja). {kuvaus_a}")
-            if kuvaus_b:
-                st.markdown(f"**{ticker_b}** (nimittäjä). {kuvaus_b}")
-            if valittu:
-                st.markdown(
-                    f"**Pari.** {valittu.lyhyt}: suhde nousee kun {ticker_a} pärjää "
-                    f"{ticker_b}:tä paremmin, jolloin {valittu.nousu}."
-                )
+    # --- the chart ---
 
     fig = build_figure(
         ratio,
@@ -275,41 +271,50 @@ with tab_chart:
     else:
         st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)
 
-    with st.expander("Data taulukkona"):
+    # --- below the chart: headline numbers and the raw data ---
+
+    s = summary(ratio)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Last", f"{s['last']:.4f}")
+    c2.metric("Change over period", f"{s['change_pct']:+.1f}%")
+    c3.metric("Lowest", f"{s['min']:.4f}")
+    c4.metric("Highest", f"{s['max']:.4f}")
+
+    with st.expander("Data as a table"):
         st.dataframe(ratio.tail(300).iloc[::-1], width="stretch")
 
 with tab_screen:
-    st.subheader("Kaikki valmiit parit")
+    st.subheader("Every preset pair")
     st.caption(
-        "Päivädataa kahden vuoden ajalta. Tila perustuu 3 kk muutokseen ja 50 päivän "
-        "keskiarvoon. Sijainti 52vk kertoo missä kohtaa vuoden vaihteluväliä suhde on: "
-        "0 % = pohjalla, 100 % = huipulla."
+        "Two years of daily data. State comes from the three month change together "
+        "with the 50 day average. The 52w position shows where the ratio sits in its "
+        "yearly range, where 0% is the low and 100% the high."
     )
-    if st.button("Laske yleiskatsaus"):
-        with st.spinner("Haetaan noin 40 tickerin data, ensimmäinen kerta kestää hetken…"):
+    if st.button("Run the overview"):
+        with st.spinner("Fetching around 40 tickers, the first run takes a moment…"):
             df = screen()
         if df.empty:
-            st.warning("Dataa ei saatu haettua.")
+            st.warning("No data came back.")
         else:
-            yhteenveto = digest.build(df)
-            st.markdown(f"### Kokonaiskuva\n{yhteenveto['kappale']}")
+            report = digest.build(df)
+            st.markdown(f"### The big picture\n{report['paragraph']}")
 
-            if yhteenveto["ristiriidat"]:
-                for rivi in yhteenveto["ristiriidat"]:
-                    st.warning(rivi)
+            if report["conflicts"]:
+                for line in report["conflicts"]:
+                    st.warning(line)
 
-            if yhteenveto["poikkeamat"]:
-                st.markdown("**Poikkeavat liikkeet**")
-                for rivi in yhteenveto["poikkeamat"]:
-                    st.markdown(f"- {rivi}")
+            if report["outliers"]:
+                st.markdown("**Moves worth a look**")
+                for line in report["outliers"]:
+                    st.markdown(f"- {line}")
 
             st.divider()
             st.dataframe(
-                df.sort_values("3 kk %", ascending=False),
+                df.sort_values("3M %", ascending=False),
                 width="stretch",
                 hide_index=True,
                 column_config={
                     c: st.column_config.NumberColumn(c, format="%.1f")
-                    for c in ["1 kk %", "3 kk %", "12 kk %", "Sijainti 52vk %"]
+                    for c in ["1M %", "3M %", "12M %", "52w position %"]
                 },
             )

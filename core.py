@@ -1,7 +1,7 @@
-"""Suhdelukukynttilöiden laskenta (esim. HYG/IEF).
+"""Ratio candle maths for pairs like HYG/IEF.
 
-Tässä moduulissa ei ole riippuvuutta Streamlitiin, jotta logiikan voi testata
-erikseen ja käyttää myös skriptistä.
+No Streamlit imports here, so the logic can be tested on its own or used from
+a plain script.
 """
 
 from __future__ import annotations
@@ -10,23 +10,23 @@ import pandas as pd
 
 OHLC = ["Open", "High", "Low", "Close"]
 
-# Aikaväli -> (Yahoon interval, paikallinen resample-sääntö tai None).
-# Yahoo tarjoaa vain osan aikaväleistä, loput tiivistetään itse.
+# Timeframe -> (Yahoo interval, local resample rule or None).
+# Yahoo only serves a few intervals, so the rest are aggregated here.
 TIMEFRAMES: dict[str, tuple[str, str | None]] = {
     "1 min": ("1m", None),
     "5 min": ("5m", None),
     "15 min": ("15m", None),
     "30 min": ("30m", None),
-    "1 h": ("1h", None),
-    "2 h": ("1h", "2h"),
-    "4 h": ("1h", "4h"),
-    "Päivä": ("1d", None),
-    "Viikko": ("1d", "W-FRI"),
-    "Kuukausi": ("1d", "ME"),
-    "Kvartaali": ("1d", "QE"),
+    "1 hour": ("1h", None),
+    "2 hours": ("1h", "2h"),
+    "4 hours": ("1h", "4h"),
+    "Daily": ("1d", None),
+    "Weekly": ("1d", "W-FRI"),
+    "Monthly": ("1d", "ME"),
+    "Quarterly": ("1d", "QE"),
 }
 
-# Yahoon historiarajat intraday-datalle. Näistä poikkeaminen palauttaa tyhjän.
+# How far back Yahoo will go for each interval. Ask for more and you get nothing.
 PERIODS_BY_INTERVAL: dict[str, list[str]] = {
     "1m": ["1d", "5d"],
     "5m": ["5d", "1mo"],
@@ -40,8 +40,8 @@ INTRADAY = {"1m", "5m", "15m", "30m", "1h"}
 
 
 def load_prices(ticker: str, period: str = "5y", interval: str = "1d") -> pd.DataFrame:
-    """Hae OHLC-data Yahoo Financesta. Palauttaa DataFramen sarakkeilla OHLC."""
-    import yfinance as yf  # tuodaan tässä, jotta testit toimivat ilman verkkoa
+    """Fetch OHLC data from Yahoo Finance."""
+    import yfinance as yf  # imported here so tests run without a network
 
     df = yf.download(
         ticker,
@@ -51,22 +51,22 @@ def load_prices(ticker: str, period: str = "5y", interval: str = "1d") -> pd.Dat
         progress=False,
     )
     if df is None or df.empty:
-        raise ValueError(f"Tickerille '{ticker}' ei löytynyt dataa jaksolla {period}.")
+        raise ValueError(f"No data for '{ticker}' over {period}.")
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
     return df[OHLC].dropna().sort_index()
 
 
 def ratio_ohlc(a: pd.DataFrame, b: pd.DataFrame) -> pd.DataFrame:
-    """Rakenna suhdeluvun A/B kynttilät kahdesta OHLC-sarjasta.
+    """Build A/B candles from two OHLC frames.
 
-    Open ja Close ovat suoria jakolaskuja. High ja Low ovat suhteen teoreettiset
-    ääriarvot saman kynttilän sisällä (A.High/B.Low ja A.Low/B.High), rajattuna
-    niin että High >= max(Open, Close) ja Low <= min(Open, Close).
+    Open and Close are plain divisions. High and Low are the widest the ratio
+    could have been inside the bar (A.High/B.Low and A.Low/B.High), clamped so
+    the candle body still fits inside the wicks.
     """
     idx = a.index.intersection(b.index)
     if len(idx) == 0:
-        raise ValueError("Sarjoilla ei ole yhtään yhteistä aikaleimaa.")
+        raise ValueError("The two series share no timestamps.")
     a, b = a.loc[idx], b.loc[idx]
 
     r = pd.DataFrame(index=idx)
@@ -80,13 +80,13 @@ def ratio_ohlc(a: pd.DataFrame, b: pd.DataFrame) -> pd.DataFrame:
 
 
 def resample_ohlc(df: pd.DataFrame, rule: str | None) -> pd.DataFrame:
-    """Tiivistä OHLC-data harvempaan aikaväliin."""
+    """Aggregate candles into a longer timeframe."""
     if rule is None or df.empty:
         return df
     kwargs = {}
     if rule.endswith("h"):
-        # Intraday: aloita ryhmittely ensimmäisestä kynttilästä eli pörssin
-        # avauksesta, ei keskiyöstä.
+        # Start intraday buckets at the first bar, which is the market open,
+        # rather than at midnight.
         kwargs["origin"] = "start"
     out = df.resample(rule, **kwargs).agg(
         {"Open": "first", "High": "max", "Low": "min", "Close": "last"}
@@ -95,7 +95,7 @@ def resample_ohlc(df: pd.DataFrame, rule: str | None) -> pd.DataFrame:
 
 
 def add_sma(df: pd.DataFrame, lengths: list[int]) -> pd.DataFrame:
-    """Lisää liukuvat keskiarvot Close-sarjasta."""
+    """Add simple moving averages of the close."""
     out = df.copy()
     for n in lengths:
         if n and n > 1:
@@ -104,7 +104,7 @@ def add_sma(df: pd.DataFrame, lengths: list[int]) -> pd.DataFrame:
 
 
 def rsi(close: pd.Series, length: int = 14) -> pd.Series:
-    """Wilderin RSI. Sama laskutapa kuin TradingView'n oletus-RSI:ssä."""
+    """Wilder's RSI, the same smoothing TradingView uses by default."""
     delta = close.diff()
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
@@ -117,7 +117,7 @@ def rsi(close: pd.Series, length: int = 14) -> pd.Series:
 def macd(
     close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9
 ) -> pd.DataFrame:
-    """MACD-viiva, signaaliviiva ja histogrammi."""
+    """MACD line, signal line and histogram."""
     ema_fast = close.ewm(span=fast, adjust=False).mean()
     ema_slow = close.ewm(span=slow, adjust=False).mean()
     line = ema_fast - ema_slow
@@ -125,12 +125,40 @@ def macd(
     return pd.DataFrame({"MACD": line, "Signal": sig, "Hist": line - sig})
 
 
+def percentile_range(close: pd.Series, low: int = 10, high: int = 90) -> dict[str, float]:
+    """Where the ratio sits within its own history.
+
+    The absolute number on a ratio chart means nothing on its own, since it
+    only reflects the two share prices. So the thresholds come from the series
+    itself as percentiles.
+    """
+    s = close.dropna()
+    now = float(s.iloc[-1])
+    return {
+        "low": float(s.quantile(low / 100)),
+        "median": float(s.quantile(0.5)),
+        "high": float(s.quantile(high / 100)),
+        "now": now,
+        "percentile": float((s < now).mean() * 100),
+        "observations": int(len(s)),
+    }
+
+
+def level(percentile: float, low: int = 10, high: int = 90) -> str:
+    """Turn a percentile into a word."""
+    if percentile >= high:
+        return "High"
+    if percentile <= low:
+        return "Low"
+    return "Normal"
+
+
 def summary(df: pd.DataFrame) -> dict[str, float]:
-    """Muutamia tunnuslukuja suhdeluvun kehityksestä."""
+    """A few headline numbers for the visible window."""
     close = df["Close"]
     return {
-        "viimeisin": float(close.iloc[-1]),
-        "muutos_%": float((close.iloc[-1] / close.iloc[0] - 1) * 100),
+        "last": float(close.iloc[-1]),
+        "change_pct": float((close.iloc[-1] / close.iloc[0] - 1) * 100),
         "min": float(close.min()),
         "max": float(close.max()),
     }
