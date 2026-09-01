@@ -8,7 +8,9 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from chart import PLOTLY_CONFIG, build_figure
+import streamlit.components.v1 as components
+
+from chart import PLOTLY_CONFIG, build_figure, resizable_html
 from core import (
     PERIODS_BY_INTERVAL,
     TIMEFRAMES,
@@ -24,6 +26,10 @@ st.set_page_config(page_title="Suhdelukugraafi", layout="wide")
 
 FLAT = flat()
 OMA = "— oma valinta —"
+
+# Oletusvalinnat käynnistyksessä.
+VAKIO_KYNTTILA = "Päivä"   # mikä tahansa avain core.TIMEFRAMES-sanakirjasta
+VAKIO_HISTORIA = "1y"      # käytetään jos aikaväli sallii, muuten pisin mahdollinen
 
 for key, value in {
     "cat": "Luottoriski",
@@ -114,26 +120,24 @@ with st.sidebar:
     col_b.text_input("Nimittäjä", key="ticker_b")
 
     st.header("Aikaväli")
-    VAKIO_KYNTTILA = "Päivä"
-    tf_name = st.selectbox(
-        "Kynttilä", list(TIMEFRAMES), index=list(TIMEFRAMES).index(VAKIO_KYNTTILA)
-        )
+    tf_names = list(TIMEFRAMES)
+    tf_name = st.selectbox("Kynttilä", tf_names, index=tf_names.index(VAKIO_KYNTTILA))
     interval, rule = TIMEFRAMES[tf_name]
     periods = PERIODS_BY_INTERVAL[interval]
-    VAKIO_HISTORIA = "1y"
     period = st.selectbox(
         "Historia",
         periods,
         index=periods.index(VAKIO_HISTORIA) if VAKIO_HISTORIA in periods else len(periods) - 1,
-        )
+    )
 
     st.header("Indikaattorit")
     sma_input = st.text_input("Liukuvat keskiarvot (pilkulla)", "20, 50")
     show_rsi = st.checkbox("RSI", value=False)
     rsi_length = st.number_input("RSI pituus", 2, 100, 14, disabled=not show_rsi)
     show_macd = st.checkbox("MACD", value=False)
-    log_scale = st.checkbox("Logaritminen asteikko", value=False)
-    height = st.slider("Kuvaajan korkeus", 500, 1100, 760, step=20)
+    log_scale = st.checkbox("Logaritminen asteikko", value=True)
+    height = st.slider("Aloituskorkeus", 400, 1200, 760, step=20)
+    resizable = st.checkbox("Raahattava korkeus", value=True)
 
 ticker_a = st.session_state.ticker_a.strip().upper()
 ticker_b = st.session_state.ticker_b.strip().upper()
@@ -182,13 +186,20 @@ with tab_chart:
         rsi_length=int(rsi_length),
         height=height,
     )
-    st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)
-
-    st.caption(
-        "Rulla zoomaa, veto panoroi, tuplaklikkaus palauttaa näkymän. Piirtotyökalut "
-        "löytyvät oikean yläkulman työkalupalkista. Huom: piirretyt viivat katoavat, "
-        "jos vaihdat asetuksia sivupalkista."
-    )
+    if resizable:
+        components.html(resizable_html(fig, height), height=height + 16, scrolling=False)
+        st.caption(
+            "Raahaa kuvaajan oikeasta alakulmasta muuttaaksesi korkeutta. Rulla zoomaa, "
+            "veto panoroi, tuplaklikkaus palauttaa näkymän. Piirtotyökalut ovat oikean "
+            "yläkulman työkalupalkissa, ja piirretyt viivat katoavat kun asetuksia vaihtaa."
+        )
+    else:
+        st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)
+        st.caption(
+            "Rulla zoomaa, veto panoroi, tuplaklikkaus palauttaa näkymän. Piirtotyökalut "
+            "ovat oikean yläkulman työkalupalkissa, ja piirretyt viivat katoavat kun "
+            "asetuksia vaihtaa."
+        )
 
     with st.expander("Data taulukkona"):
         st.dataframe(ratio.tail(300).iloc[::-1], width="stretch")

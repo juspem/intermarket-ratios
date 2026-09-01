@@ -18,6 +18,7 @@ DRAW_TOOLS = [
 
 PLOTLY_CONFIG = {
     "scrollZoom": True,          # rullalla zoomaus kuten TradingView'ssä
+    "responsive": True,          # mukautuu laatikon kokoon
     "displaylogo": False,
     "modeBarButtonsToAdd": DRAW_TOOLS,
     "doubleClick": "reset",
@@ -166,3 +167,39 @@ def build_figure(
     )
     fig.update_xaxes(showticklabels=True, row=panels, col=1)
     return fig
+
+
+def resizable_html(fig: go.Figure, height: int = 760) -> str:
+    """Kääri kuvaaja laatikkoon, jonka korkeutta voi raahata alareunasta.
+
+    Streamlit renderöi tämän iframeen. ResizeObserver ilmoittaa uuden korkeuden
+    sekä Plotlylle että Streamlitille, jotta iframe kasvaa laatikon mukana.
+    """
+    fig = go.Figure(fig)
+    fig.update_layout(height=None, autosize=True)
+    body = fig.to_html(
+        include_plotlyjs="cdn",
+        full_html=False,
+        config=PLOTLY_CONFIG,
+        div_id="gd",
+    )
+    return f"""
+<div id="wrap" style="height:{height}px;min-height:280px;resize:vertical;overflow:hidden;">
+  {body}
+</div>
+<div style="height:6px;cursor:ns-resize;background:#3a3a3a;border-radius:3px;margin-top:2px;"></div>
+<script>
+  const wrap = document.getElementById("wrap");
+  const gd = document.getElementById("gd");
+  function sync() {{
+    const h = wrap.clientHeight;
+    gd.style.height = h + "px";
+    if (window.Plotly) window.Plotly.Plots.resize(gd);
+    window.parent.postMessage(
+      {{type: "streamlit:setFrameHeight", height: h + 16}}, "*"
+    );
+  }}
+  new ResizeObserver(sync).observe(wrap);
+  setTimeout(sync, 150);
+</script>
+"""
