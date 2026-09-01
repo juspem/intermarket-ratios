@@ -149,7 +149,9 @@ def build_figure(
         rangeslider_visible=False,
         rangebreaks=_rangebreaks(interval),
     )
+    fig.update_xaxes(fixedrange=False)
     fig.update_yaxes(
+        fixedrange=False,
         showspikes=True,
         spikemode="across",
         spikesnap="cursor",
@@ -169,11 +171,14 @@ def build_figure(
     return fig
 
 
-def resizable_html(fig: go.Figure, height: int = 760) -> str:
+def resizable_html(fig: go.Figure, height: int = 760, auto_y: bool = True) -> str:
     """Kääri kuvaaja laatikkoon, jonka korkeutta voi raahata alareunasta.
 
     Streamlit renderöi tämän iframeen. ResizeObserver ilmoittaa uuden korkeuden
     sekä Plotlylle että Streamlitille, jotta iframe kasvaa laatikon mukana.
+
+    auto_y sovittaa hinta-akselin näkyviin kynttilöihin aina kun x-akselia
+    liikutetaan, kuten TradingView'ssä.
     """
     fig = go.Figure(fig)
     fig.update_layout(height=None, autosize=True)
@@ -191,6 +196,9 @@ def resizable_html(fig: go.Figure, height: int = 760) -> str:
 <script>
   const wrap = document.getElementById("wrap");
   const gd = document.getElementById("gd");
+  const autoY = {str(auto_y).lower()};
+  let busy = false;
+
   function sync() {{
     const h = wrap.clientHeight;
     gd.style.height = h + "px";
@@ -199,7 +207,49 @@ def resizable_html(fig: go.Figure, height: int = 760) -> str:
       {{type: "streamlit:setFrameHeight", height: h + 16}}, "*"
     );
   }}
+
+  // Sovita hinta-akseli niihin kynttilöihin jotka ovat näkyvissä.
+  function fitY() {{
+    if (busy || !window.Plotly) return;
+    const c = gd.data.find(t => t.type === "candlestick");
+    const xr = gd.layout.xaxis && gd.layout.xaxis.range;
+    if (!c || !xr) return;
+
+    const x0 = new Date(xr[0]).getTime();
+    const x1 = new Date(xr[1]).getTime();
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < c.x.length; i++) {{
+      const xi = new Date(c.x[i]).getTime();
+      if (xi >= x0 && xi <= x1) {{
+        if (c.low[i] < lo) lo = c.low[i];
+        if (c.high[i] > hi) hi = c.high[i];
+      }}
+    }}
+    if (!isFinite(lo) || !isFinite(hi) || lo <= 0) return;
+
+    let range;
+    if (gd.layout.yaxis.type === "log") {{
+      const a = Math.log10(lo), b = Math.log10(hi);
+      const pad = (b - a) * 0.08 || 0.01;
+      range = [a - pad, b + pad];
+    }} else {{
+      const pad = (hi - lo) * 0.08 || hi * 0.01;
+      range = [lo - pad, hi + pad];
+    }}
+    busy = true;
+    window.Plotly.relayout(gd, {{"yaxis.range": range}}).then(() => {{ busy = false; }});
+  }}
+
   new ResizeObserver(sync).observe(wrap);
-  setTimeout(sync, 150);
+  setTimeout(function () {{
+    sync();
+    if (autoY && gd.on) {{
+      gd.on("plotly_relayout", function (ev) {{
+        // Vain x-akselin muutos laukaisee sovituksen, jotta oma y-säätö säilyy.
+        if (ev["xaxis.range[0]"] !== undefined || ev["xaxis.autorange"]) fitY();
+      }});
+      fitY();
+    }}
+  }}, 200);
 </script>
 """
