@@ -114,17 +114,25 @@ with st.sidebar:
     col_b.text_input("Nimittäjä", key="ticker_b")
 
     st.header("Aikaväli")
-    tf_name = st.selectbox("Kynttilä", list(TIMEFRAMES), index=7)
+    VAKIO_KYNTTILA = "Päivä"
+    tf_name = st.selectbox(
+        "Kynttilä", list(TIMEFRAMES), index=list(TIMEFRAMES).index(VAKIO_KYNTTILA)
+        )
     interval, rule = TIMEFRAMES[tf_name]
     periods = PERIODS_BY_INTERVAL[interval]
-    period = st.selectbox("Historia", periods, index=len(periods) - 1)
+    VAKIO_HISTORIA = "1y"
+    period = st.selectbox(
+        "Historia",
+        periods,
+        index=periods.index(VAKIO_HISTORIA) if VAKIO_HISTORIA in periods else len(periods) - 1,
+        )
 
     st.header("Indikaattorit")
     sma_input = st.text_input("Liukuvat keskiarvot (pilkulla)", "20, 50")
-    show_rsi = st.checkbox("RSI", value=True)
+    show_rsi = st.checkbox("RSI", value=False)
     rsi_length = st.number_input("RSI pituus", 2, 100, 14, disabled=not show_rsi)
     show_macd = st.checkbox("MACD", value=False)
-    log_scale = st.checkbox("Logaritminen asteikko", value=True)
+    log_scale = st.checkbox("Logaritminen asteikko", value=False)
     height = st.slider("Kuvaajan korkeus", 500, 1100, 760, step=20)
 
 ticker_a = st.session_state.ticker_a.strip().upper()
