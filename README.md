@@ -32,7 +32,7 @@ No fixed thresholds are drawn, because for almost every pair none exist. The one
 
 Above every chart you get what each leg holds, what the pair reads, anything odd about that particular pair, a paragraph on why the theme is worth watching at all, and where the ratio currently stands against its own three year history. ETF descriptions live in tickers.py, theme background and pair notes in presets.py.
 
-Below the chart sit the headline numbers and the raw data.
+The headline numbers sit on the same line as the pair name. Only the raw data table is below the chart.
 
 ## How ratio candles are built
 

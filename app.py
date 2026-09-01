@@ -213,28 +213,51 @@ with tab_chart:
         st.warning("Not enough data to draw. Try a longer history.")
         st.stop()
 
-    # --- above the chart: what the legs are, what the pair reads, where it stands ---
+    # --- above the chart: the legs, what the pair reads, where it stands ---
 
-    st.subheader(f"{ticker_a} / {ticker_b}")
+    s = summary(ratio)
+    ref = reference_range(ticker_a, ticker_b)
+
+    title_col, number_col = st.columns([2, 3])
+    title_col.subheader(f"{ticker_a} / {ticker_b}")
+
+    # Written as HTML so the line can sit level with the heading. Markdown
+    # asterisks would show up literally inside a div, so bold is <b> here.
+    numbers = (
+        f"<b>{s['last']:.4f}</b> last · <b>{s['change_pct']:+.1f}%</b> over {period} · "
+        f"range {s['min']:.4f} to {s['max']:.4f}"
+    )
+    if ref:
+        pct = ref["percentile"]
+        if pct >= 100:
+            standing = "<b>High</b>, at a 3y high"
+        elif pct <= 0:
+            standing = "<b>Low</b>, at a 3y low"
+        else:
+            # Clamp the rounding: 99.9% must not print as 100%, which would
+            # claim a new high that has not actually happened.
+            shown = min(99, max(1, round(pct)))
+            standing = f"<b>{level(pct)}</b>, above {shown}% of 3y"
+        numbers += f" · {standing}"
+    number_col.markdown(
+        f"<div style='padding-top:16px'>{numbers}</div>", unsafe_allow_html=True
+    )
 
     about_a, about_b = describe(ticker_a), describe(ticker_b)
-    if about_a:
-        st.markdown(f"**{ticker_a}** (numerator). {about_a}")
-    if about_b:
-        st.markdown(f"**{ticker_b}** (denominator). {about_b}")
+    if about_a or about_b:
+        legs = []
+        if about_a:
+            legs.append(f"**{ticker_a}** (numerator) {about_a}")
+        if about_b:
+            legs.append(f"**{ticker_b}** (denominator) {about_b}")
+        st.caption("  \n".join(legs))
 
     if selected:
         st.markdown(
-            f"**{selected.topic}.** The ratio rises when {ticker_a} outperforms "
-            f"{ticker_b}, which means {selected.rising}. A falling ratio means "
-            f"{selected.falling}."
+            f"**{selected.topic}.** Rising means {selected.rising}, "
+            f"falling means {selected.falling}."
         )
-        if selected.note:
-            st.markdown(f"**Worth knowing.** {selected.note}")
-    if selected_theme in THEMES:
-        st.markdown(f"**Why {selected_theme.lower()} matters.** {THEMES[selected_theme]}")
 
-    ref = reference_range(ticker_a, ticker_b)
     if ref:
         current = level(ref["percentile"])
         meaning = {
@@ -242,13 +265,19 @@ with tab_chart:
             "Low": selected.falling if selected else "the ratio is near the bottom of its range",
             "Normal": "this is an ordinary level",
         }[current]
-        st.info(
-            f"**{current}: {ref['now']:.4f}** sits above "
-            f"{ref['percentile']:.0f}% of the last three years. "
-            f"Low is under {ref['low']:.4f}, the median is {ref['median']:.4f} "
-            f"and high is over {ref['high']:.4f}. "
-            f"{meaning[0].upper() + meaning[1:]}."
+        st.caption(
+            f"Against its own three year history: low under {ref['low']:.4f}, "
+            f"median {ref['median']:.4f}, high over {ref['high']:.4f}. "
+            f"Right now {meaning}."
         )
+
+    extras = []
+    if selected and selected.note:
+        extras.append(f"**Worth knowing.** {selected.note}")
+    if selected_theme in THEMES:
+        extras.append(f"**Why {selected_theme.lower()} matters.** {THEMES[selected_theme]}")
+    if extras:
+        st.caption("  \n\n".join(extras))
 
     if selected and selected.convention:
         st.warning(selected.convention)
@@ -271,14 +300,7 @@ with tab_chart:
     else:
         st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)
 
-    # --- below the chart: headline numbers and the raw data ---
-
-    s = summary(ratio)
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Last", f"{s['last']:.4f}")
-    c2.metric("Change over period", f"{s['change_pct']:+.1f}%")
-    c3.metric("Lowest", f"{s['min']:.4f}")
-    c4.metric("Highest", f"{s['max']:.4f}")
+    # --- below the chart: the raw data ---
 
     with st.expander("Data as a table"):
         st.dataframe(ratio.tail(300).iloc[::-1], width="stretch")
