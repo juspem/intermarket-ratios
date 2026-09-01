@@ -1,73 +1,45 @@
-# ratio-charts
+# Chart-Ratios
 
-Kevyt työkalu kahden instrumentin suhdeluvun (esim. `HYG/IEF`) tarkasteluun
-kynttilägraafina eri aikaväleillä.
-
-## Asennus (Windows + VS Code)
-
-Avaa VS Codessa terminaali (`Ctrl+ö` tai Terminal → New Terminal) ja aja:
-
-```powershell
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-Valitse VS Codessa tulkki: `Ctrl+Shift+P` → *Python: Select Interpreter* → `.venv`.
+Streamlit-työkalu kahden instrumentin suhdeluvun tarkasteluun kynttilägraafina, esimerkiksi HYG/IEF. Suhdeparit kertovat markkinan sisäisestä liikkeestä enemmän kuin yksittäisen instrumentin kurssi.
 
 ## Käyttö
 
-```powershell
-streamlit run app.py
-```
+Valitse sivupalkista osoittaja ja nimittäjä, historian pituus ja kynttilän aikaväli. Voit joko kirjoittaa tickerit itse tai valita valmiin parin.
 
-Selain avautuu osoitteeseen `http://localhost:8501`. Vaihda sivupalkista
-osoittaja ja nimittäjä, historian pituus ja kynttilän aikaväli.
-
-## Rakenne
-
-| Tiedosto | Sisältö |
-|---|---|
-| `core.py` | Datan haku, suhdekynttilöiden laskenta, aikavälin tiivistys |
-| `app.py` | Streamlit-käyttöliittymä ja Plotly-kuvaaja |
-| `presets.py` | Valmiit suhdeparit teemoittain |
+Yleiskatsaus-välilehti laskee kaikkien valmiiden parien 1 kk, 3 kk ja 12 kk muutokset sekä sijainnin 52 viikon vaihteluvälillä, eli mitkä suhteet ovat liikkeessä juuri nyt.
 
 ## Suhdekynttilöiden laskenta
 
-- `Open = A.Open / B.Open`, `Close = A.Close / B.Close` — eksakteja.
-- `High = A.High / B.Low`, `Low = A.Low / B.High` — teoreettiset ääriarvot
-  kynttilän sisällä. Nämä ovat hieman todellista leveämpiä, koska päivädatasta
-  ei näe osuivatko A:n huippu ja B:n pohja samaan hetkeen.
-- Viikko- ja kuukausikynttilät lasketaan päivädatasta paikallisesti
-  (`first / max / min / last`), joten aikavälin vaihto ei vaadi uutta hakua.
+Open ja Close ovat eksakteja: A.Open / B.Open ja A.Close / B.Close.
+
+High ja Low ovat teoreettisia ääriarvoja: A.High / B.Low ja A.Low / B.High. Nämä ovat hieman todellista leveämpiä, koska päivädatasta ei näe osuivatko A:n huippu ja B:n pohja samaan hetkeen.
+
+Viikko- ja kuukausikynttilät lasketaan päivädatasta paikallisesti, joten aikavälin vaihto ei vaadi uutta hakua.
 
 ## Valmiit parit
 
-`presets.py` sisältää noin 40 vakiintunutta suhdeparia kahdeksassa teemassa:
-luottoriski, riskinotto osakkeissa, sektorijohtajuus, tyyli, defensiivinen
-varoitus, korot ja inflaatio, raaka-aineet, maantiede. Valitse teema ja pari
-sivupalkista, tai kirjoita omat tickerit kenttiin.
+presets.py sisältää noin 40 vakiintunutta suhdeparia kahdeksassa teemassa: luottoriski, riskinotto osakkeissa, sektorijohtajuus, tyyli, defensiivinen varoitus, korot ja inflaatio, raaka-aineet ja maantiede.
 
-Lisää omat parisi suoraan `presets.py`-tiedostoon: kategoria -> lista
-`(osoittaja, nimittäjä, selite)`.
+Omat parit lisätään suoraan presets.py-tiedostoon: kategoria -> lista (osoittaja, nimittäjä, selite).
 
-Välilehti **Yleiskatsaus** laskee kaikkien parien 1 kk / 3 kk / 12 kk muutokset
-ja sijainnin 52 viikon vaihteluvälillä, eli mitkä suhteet ovat liikkeessä juuri nyt.
+## Rakenne
 
-## Git ja GitHub
+core.py: datan haku, suhdekynttilöiden laskenta, aikavälin tiivistys
 
-```powershell
-git init
-git add .
-git commit -m "Ensimmäinen versio: HYG/IEF-suhdegraafi"
-git branch -M main
-git remote add origin https://github.com/KAYTTAJA/ratio-charts.git
-git push -u origin main
-```
+app.py: Streamlit-käyttöliittymä ja Plotly-kuvaaja
 
-## Ideoita jatkoon
+presets.py: valmiit suhdeparit teemoittain
+
+## Asennus
+
+python -m venv .venv
+
+pip install -r requirements.txt
+
+streamlit run app.py
+
+## Kehityskohteita
 
 - RSI tai muu indikaattori suhdesarjasta
-- Intrapäivädata (`interval="1h"`, Yahoolla n. 730 päivän historia)
-- Valmiiden pariparien tallennus JSON-tiedostoon
-- Datan välimuisti levylle, jottei Yahoota tarvitse kysellä joka käynnistyksellä
+- Intrapäivädata (Yahoolla noin 730 päivän historia)
+- Datan välimuisti levylle
