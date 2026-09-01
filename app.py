@@ -32,7 +32,8 @@ CUSTOM = "— custom —"
 
 # What loads on startup.
 DEFAULT_TIMEFRAME = "Daily"   # any key from core.TIMEFRAMES
-DEFAULT_PERIOD = "1y"         # used where the timeframe allows it, longest available otherwise
+DEFAULT_PERIOD = "5y"         # used where the timeframe allows it, longest available otherwise
+DEFAULT_SMA = "50, 200"       # the two lengths most people read trend from
 DEFAULT_PAIR = PRESETS["Credit risk"][0]
 
 REFERENCE_DAYS = 756          # about three years of trading days
@@ -63,8 +64,8 @@ def _pct(series: pd.Series, bars: int) -> float:
 def reference_range(a: str, b: str) -> dict[str, float] | None:
     """The pair's own range, measured over three years of daily data."""
     try:
-        ca = cached_prices(a, "5y")["Close"]
-        cb = cached_prices(b, "5y")["Close"]
+        ca = cached_prices(a, "5y", "1d")["Close"]
+        cb = cached_prices(b, "5y", "1d")["Close"]
     except Exception:
         return None
     r = (ca / cb).dropna().tail(REFERENCE_DAYS)
@@ -177,7 +178,7 @@ with st.sidebar:
     )
 
     st.header("Indicators")
-    sma_input = st.text_input("Moving averages (comma separated)", "20, 50")
+    sma_input = st.text_input("Moving averages (comma separated)", DEFAULT_SMA)
     show_rsi = st.checkbox("RSI", value=False)
     rsi_length = st.number_input("RSI length", 2, 100, 14, disabled=not show_rsi)
     show_macd = st.checkbox("MACD", value=False)
