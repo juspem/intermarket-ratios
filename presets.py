@@ -26,7 +26,7 @@ class Pair(NamedTuple):
 
     @property
     def label(self) -> str:
-        return f"{self.a} / {self.b} · {self.topic}"
+        return f"{self.a} / {self.b} - {self.topic}"
 
 
 # Why each family of ratios is worth watching at all. One level up from the
